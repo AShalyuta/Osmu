@@ -1,0 +1,8 @@
+<html>
+    <head>
+        <title>Trainee homework</title>
+    </head>
+    <body>
+        <h1> {{ NODE }} </h1>
+    </body>
+</html>

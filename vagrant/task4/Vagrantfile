@@ -1,0 +1,143 @@
+# -*- mode: ruby -*-
+
+# Check for required plugins
+unless Vagrant.has_plugin?( "vagrant-hostmanager" )
+  raise "[!!] Plugin required\n\n\tvagrant plugin install vagrant-hostmanager\n"
+end
+
+# Main variables
+$vm_quantity = 0
+$vm_pr_network_name = "network1"
+$vm_pr_network_IP_part = "192.168.56"
+$vm_host_IP_start_from = 11
+$vm_ho_network_IP_part = "192.168.60"
+$vm_hostname_prefix = "node-"
+
+# User input
+if ARGV[0] == "up"
+  begin
+    while true do
+      puts("[<<] Enter the VMs quantity: ")
+      $vm_quantity = STDIN.gets.chomp
+      $vm_quantity = Integer($vm_quantity)
+      if $vm_quantity < 1 or $vm_quantity > 253-($vm_host_IP_start_from-1)
+        puts("[!!] The VMs quantity must be between 1 and #{253-($vm_host_IP_start_from-1)}")
+        next
+      end
+      break
+    end
+  rescue
+    puts("[!!] The VMs quantity must be a number")
+    retry
+  end
+else
+  vms_announced_dirs = Dir.children(".vagrant/machines")
+  $vm_quantity = vms_announced_dirs.include?("default") ? vms_announced_dirs.length-1 : vms_announced_dirs.length
+end
+
+# Configuring templates
+$tomcat_index_file = ""
+aFile = File.new("files/tomcat_index_file", "r")
+if aFile
+  $tomcat_index_file = aFile.read()
+  aFile.close()
+else
+  raise "Unable to find file '.files/tomcat_index_file'"
+end
+
+$nginx_default_conf = ""
+aFile = File.new("files/nginx_default", "r")
+if aFile
+  $nginx_default_conf = aFile.read()
+  aFile.close()
+else
+  raise "Unable to find file '.files/nginx_default'"
+end
+
+
+
+# Create "hosts" file records and list of servers for nginx reverse proxy config
+$nginx_servers_revproxy = ""
+(1..$vm_quantity).each do |i|
+  if i != 1
+    $nginx_servers_revproxy += "  server #{$vm_hostname_prefix}#{i}:8080;\n"
+  end
+end
+$nginx_default_conf = $nginx_default_conf.gsub("{{ SERVER NODES }}", "#{$nginx_servers_revproxy}")
+
+# Shell command sets
+$first_node_shell_once = "
+
+"
+$first_node_shell_always = "
+  apt-get update
+  apt-get install -y nginx
+  echo '#{$nginx_default_conf}' > /etc/nginx/sites-available/default
+  systemctl restart nginx
+"
+
+$default_shell_once = "
+  
+"
+$default_shell_always = "
+  # apt-get update
+  # apt-get install -y openjdk-11-jdk tomcat9
+
+  echo '#{$tomcat_index_file}' > /var/lib/tomcat9/webapps/ROOT/index.html
+"
+
+#VMs deploying
+Vagrant.configure("2") do |config|
+  config.hostmanager.enabled = true
+  config.hostmanager.manage_guest = true    # add records to hosts file on the guest VMs
+  # config.hostmanager.manage_host = true
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+  config.vm.box = "deb-buster64_tomcat9"    # Use a custom vagrant box from task_3
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = 1024
+    vb.cpus = 1
+  end
+
+  $vm_quantity.downto(1).each do |i|
+    config.vm.define "#{$vm_hostname_prefix}#{i}" do |node|
+      node.hostmanager.aliases = "#{$vm_hostname_prefix}#{i} web-#{i}"
+      node.vm.provider :virtualbox do |vb|
+        vb.customize ["modifyvm", :id, "--name", "#{$vm_hostname_prefix}#{i}"]
+      end
+      node.vm.hostname = "#{$vm_hostname_prefix}#{i}"
+      node.vm.network "private_network",
+        ip: "#{$vm_pr_network_IP_part}.#{$vm_host_IP_start_from-1+i}",
+        netmask: "24",
+        virtualbox__intnet: $vm_pr_network_name
+
+      if i == 1
+        node.vm.box = "debian/buster64"    # For Nginx proxy use official debian/buster64 box
+        node.vm.network "private_network",
+          ip: "#{$vm_ho_network_IP_part}.#{$vm_host_IP_start_from-1+i}",
+          netmask: "24"
+      end
+
+      node.vm.provision "Once running shell command set", type: "shell", run: "once" do |sh|
+        shell = ""
+        if i == 1 
+          shell = $first_node_shell_once
+        else
+          shell = $default_shell_once
+        end
+        sh.inline = shell
+        sh.privileged = true
+      end
+      node.vm.provision "Always running shell command set", type: "shell", run: "always" do |sh|
+        shell = ""
+        if i == 1 
+          shell = $first_node_shell_always
+        else
+          shell = $default_shell_always
+          shell = shell.gsub("{{ NODE }}", "#{$vm_hostname_prefix}#{i}")
+        end
+        sh.inline = shell
+        sh.privileged = true
+      end
+    end
+  end
+end

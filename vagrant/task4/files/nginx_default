@@ -1,0 +1,13 @@
+upstream traineehomework {    
+{{ SERVER NODES }}
+}
+
+server {
+	listen 80;
+	listen [::]:80;
+	server_name traineehomework.com www.traineehomework.com;
+	
+	location / {
+		proxy_pass http://traineehomework;
+	}
+}

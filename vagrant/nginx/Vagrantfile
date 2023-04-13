@@ -1,0 +1,30 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# All Vagrant configuration is done below. The "2" in Vagrant.configure
+# configures the configuration version (we support older styles for
+# backwards compatibility). Please don't change it unless you know what
+# you're doing.
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/focal64"
+  
+  # Set VM name
+  config.vm.define "vm1" 
+  
+  # Configure private network
+  config.vm.network "private_network", ip: "192.168.33.10"
+  
+  # Configure port forwarding
+  config.vm.network "forwarded_port", guest: 80, host: 8080
+
+  # Set VM memory
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = "2048"
+  end
+  
+  # Install nginx
+  config.vm.provision "shell", inline: <<-SHELL
+     sudo apt-get update
+     sudo apt-get install -y nginx
+   SHELL
+end

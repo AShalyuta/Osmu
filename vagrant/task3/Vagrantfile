@@ -1,0 +1,33 @@
+
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "debian/buster64"
+  config.vm.provision "Install all necesarry packets", type: "shell", run: "once" do |sh|
+    sh.inline = <<-SHELL
+      apt-get update
+      apt-get install -y openjdk-11-jdk tomcat9
+    SHELL
+  end
+end
+
+__END__
+
+To create a custom box with preinstalled Tomcat9 follow the steps:
+
+1. Launch this Vagrantfile:
+
+    vagrant up
+
+2. Connect to the newly created VM:
+
+    vagrant ssh
+
+3. Log out from VM.
+
+4. Create a box from existing VM
+
+    vagrant package --output boxname.box
+
+5. Add the box to local Vagrant boxes directory
+
+    vagrant box add --name newboxname boxname.box
